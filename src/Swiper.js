@@ -72,6 +72,7 @@ export default class SwiperAnimated extends PureComponent {
     stack: PropTypes.bool,
     scaleOthers: PropTypes.bool,
     stackOffsetY: PropTypes.number,
+    stackVertical: PropTypes.bool,
     stackDepth: PropTypes.number,
     onClick: PropTypes.func,
     onRightSwipe: PropTypes.func,
@@ -79,6 +80,7 @@ export default class SwiperAnimated extends PureComponent {
     renderCard: PropTypes.func,
     onRemoveCard: PropTypes.func,
     dragY: PropTypes.bool,
+    fullHeight: PropTypes.bool,
     smoothTransition: PropTypes.bool,
     tapToNext: PropTypes.bool,
     dragDownToBack: PropTypes.bool,
@@ -108,8 +110,10 @@ export default class SwiperAnimated extends PureComponent {
     allowGestureTermination: false,
     stack: false,
     scaleOthers: true,
+    fullHeight: false,
     stackOffsetY: 5,
     stackDepth: 5,
+    stackVertical: false,
     onClick: () => {},
     onRightSwipe: () => {},
     onLeftSwipe: () => {},
@@ -211,9 +215,14 @@ export default class SwiperAnimated extends PureComponent {
     this.pan.setValue({ x: 0, y: 0 });
   };e
 
-  handlePanResponderMove = () => Animated.event([
-    null, { dx: this.pan.x, dy: this.props.dragY ? this.pan.y : new Animated.Value(0) },
-  ]);
+  handlePanResponderMove = () => {
+    return Animated.event([
+      null, {
+        dx: this.props.stackVertical ? new Animated.Value(0) : this.pan.x,
+        dy: this.props.dragY ? (this.props.stackVertical && this.pan.y < 0) ? new Animated.Value(0) : this.pan.y : new Animated.Value(0),
+      },
+    ]);
+  }
 
   handlePanResponderEnd = (e, { vx, vy, dx, dy }) => {
     const { card } = this.state;
@@ -265,7 +274,11 @@ export default class SwiperAnimated extends PureComponent {
     if ((!isNaN(panY) && panX > SWIPE_THRESHOLD) || (!isNaN(panY) && panY > SWIPE_THRESHOLD)) {
       if (stack) {
         // if stack, any direction removes card
-        this.advanceState(velocity, vy, true, accumulatedX, velocityY);
+        if ((this.props.stackVertical && dy < 0) || !this.props.stackVertical) {
+          this.advanceState(velocity, vy, true, accumulatedX, velocityY);
+        } else {
+          this.resetState();
+        }
         return;
       }
 
@@ -278,7 +291,8 @@ export default class SwiperAnimated extends PureComponent {
       }
       onRemoveCard(this.currentIndex[this.guid]);
     } else {
-      this.resetPan();
+      if (this.props.stackVertical && dy < 0 || !this.props.stackVertical)
+        this.resetPan();
     }
   };
 
@@ -332,6 +346,7 @@ export default class SwiperAnimated extends PureComponent {
         velocity,
         deceleration: stack ? 0.99 : 0.986,
       });
+
 
       this.cardAnimation.start((status) => {
         if (status.finished) {
@@ -388,9 +403,13 @@ export default class SwiperAnimated extends PureComponent {
   }
 
   resetPan = () => {
-    Animated.spring(this.pan, {
+    // Animated.spring(this.pan, {
+    //   toValue: { x: 0, y: 0 },
+    //   friction: 4,
+    // }).start();
+    Animated.timing(this.pan, {
       toValue: { x: 0, y: 0 },
-      friction: 4,
+      duration: 150,
     }).start();
   }
 
@@ -561,11 +580,13 @@ export default class SwiperAnimated extends PureComponent {
          add panHandlers and other transforms
          =============================================================================== */
         rotate = this.pan.x.interpolate({ inputRange: [-400, 0, 400], outputRange: ['-8deg', '0deg', '8deg'] });
-        translateY = this.pan.y;
+        translateY = this.props.stackVertical
+          ? this.pan.y.interpolate({ inputRange: [-400, 0, 400], outputRange: [-400, 0, 0] })
+          : this.pan.y;
         translateX = this.pan.x;
         panHandlers = swiper && children.length - 1 !== this.currentIndex[this.guid] ?
           this.panResponder.panHandlers : {};
-        if (this.pan.y === 0 && this.pan.x === 0) {
+        if (this.pan.y === 0 && this.pan.x === 0 && !this.props.stackVertical) {
           translateY = this.enter.interpolate({ inputRange: [0.5, 1], outputRange: [5, 50] });
         }
       } else {
@@ -583,7 +604,7 @@ export default class SwiperAnimated extends PureComponent {
           extrapolate: 'clamp',
         });
         opacity = this.enter.interpolate({ inputRange: [0.6, 1], outputRange: [0.9, 1] });
-        if (this.pan.y === 0) {
+        if (this.pan.y === 0 && !this.props.stackVertical) {
           translateY = this.enter.interpolate({ inputRange: [0.5, 1], outputRange: [0, 30] });
         }
       }
@@ -594,7 +615,7 @@ export default class SwiperAnimated extends PureComponent {
         left: 0,
         right: 0,
         borderRadius: 10,
-        height: deviceHeight - 130 - offsetY,
+        height: this.props.fullHeight ? deviceHeight : deviceHeight - 130 - offsetY,
         opacity,
         transform: [
           { translateY },
